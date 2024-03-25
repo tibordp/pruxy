@@ -155,7 +155,7 @@ type Status struct {
 type PrinterStatus struct {
 	State        string   `json:"state"`
 	TempNozzle   *float64 `json:"temp_nozzle"`
-	TargetNozzle *float64 `json:"target"`
+	TargetNozzle *float64 `json:"target_nozzle"`
 	TempBed      *float64 `json:"temp_bed"`
 	TargetBed    *float64 `json:"target_bed"`
 	AxisX        *float64 `json:"axis_x"`
