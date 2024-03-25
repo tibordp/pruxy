@@ -275,7 +275,7 @@ func (c *PrusaCollector) collectStatus(ch chan<- prometheus.Metric) {
 
 	if printerStatus.FanHotend != nil {
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("prusa_hotend_fan_speed_percent", "The current hotend fan speed percentage", nil, nil),
+			prometheus.NewDesc("prusa_hotend_fan_speed_rpm", "The current hotend fan speed percentage", nil, nil),
 			prometheus.GaugeValue,
 			float64(*printerStatus.FanHotend),
 		)
@@ -283,7 +283,7 @@ func (c *PrusaCollector) collectStatus(ch chan<- prometheus.Metric) {
 
 	if printerStatus.FanPrint != nil {
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("prusa_print_fan_speed_percent", "The current print fan speed percentage", nil, nil),
+			prometheus.NewDesc("prusa_print_fan_speed_rpm", "The current print fan speed percentage", nil, nil),
 			prometheus.GaugeValue,
 			float64(*printerStatus.FanPrint),
 		)
