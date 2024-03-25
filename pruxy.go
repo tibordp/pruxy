@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -77,15 +78,17 @@ func (c *PrusaCollector) Describe(ch chan<- *prometheus.Desc) {
 
 func (c *PrusaCollector) Collect(ch chan<- prometheus.Metric) {
 	wg := sync.WaitGroup{}
-	for _, f := range []func(chan<- prometheus.Metric){
+	for _, f := range []func(chan<- prometheus.Metric) error{
 		c.collectInfo,
 		c.collectStatus,
 		c.collectJobInfo,
 	} {
 		wg.Add(1)
-		go func(f func(chan<- prometheus.Metric)) {
+		go func(f func(chan<- prometheus.Metric) error) {
 			defer wg.Done()
-			f(ch)
+			if err := f(ch); err != nil {
+				ch <- prometheus.NewInvalidMetric(prometheus.NewDesc("prusa_error", "An error occurred", nil, nil), err)
+			}
 		}(f)
 	}
 	wg.Wait()
@@ -98,29 +101,25 @@ type PrinterInfo struct {
 	MinExtrusionTemp *int     `json:"min_extrusion_temp"`
 }
 
-func (c *PrusaCollector) collectInfo(ch chan<- prometheus.Metric) {
+func (c *PrusaCollector) collectInfo(ch chan<- prometheus.Metric) error {
 	uri, err := url.JoinPath(c.address, "/api/v1/info")
 	if err != nil {
-		log.Println(err)
-		return
+		panic(err)
 	}
 
 	res, err := c.client.Get(uri)
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		log.Println("status code:", res.StatusCode)
-		return
+		return fmt.Errorf("status code: %d", res.StatusCode)
 	}
 
 	var info PrinterInfo
 	if err := json.NewDecoder(res.Body).Decode(&info); err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 
 	ch <- prometheus.MustNewConstMetric(
@@ -146,6 +145,8 @@ func (c *PrusaCollector) collectInfo(ch chan<- prometheus.Metric) {
 			float64(*info.MinExtrusionTemp),
 		)
 	}
+
+	return nil
 }
 
 type Status struct {
@@ -167,29 +168,25 @@ type PrinterStatus struct {
 	FanPrint     *int     `json:"fan_print"`
 }
 
-func (c *PrusaCollector) collectStatus(ch chan<- prometheus.Metric) {
+func (c *PrusaCollector) collectStatus(ch chan<- prometheus.Metric) error {
 	uri, err := url.JoinPath(c.address, "/api/v1/status")
 	if err != nil {
-		log.Println(err)
-		return
+		panic(err)
 	}
 
 	res, err := c.client.Get(uri)
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		log.Println("status code:", res.StatusCode)
-		return
+		return fmt.Errorf("status code: %d", res.StatusCode)
 	}
 
 	var status Status
 	if err := json.NewDecoder(res.Body).Decode(&status); err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 
 	printerStatus := status.Printer
@@ -203,57 +200,64 @@ func (c *PrusaCollector) collectStatus(ch chan<- prometheus.Metric) {
 
 	if printerStatus.TempNozzle != nil {
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("prusa_nozzle_temperature_celsius", "The current nozzle temperature", nil, nil),
+			prometheus.NewDesc("prusa_temperature_celsius", "The current temperature reading", []string{"sensor"}, nil),
 			prometheus.GaugeValue,
 			*printerStatus.TempNozzle,
+			"nozzle",
 		)
 	}
 
 	if printerStatus.TargetNozzle != nil {
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("prusa_nozzle_target_temperature_celsius", "The target nozzle temperature", nil, nil),
+			prometheus.NewDesc("prusa_target_temperature_celsius", "The target temperature", []string{"sensor"}, nil),
 			prometheus.GaugeValue,
 			*printerStatus.TargetNozzle,
+			"nozzle",
 		)
 	}
 
 	if printerStatus.TempBed != nil {
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("prusa_bed_temperature_celsius", "The current bed temperature", nil, nil),
+			prometheus.NewDesc("prusa_temperature_celsius", "The current temperature reading", []string{"sensor"}, nil),
 			prometheus.GaugeValue,
 			*printerStatus.TempBed,
+			"bed",
 		)
 	}
 
 	if printerStatus.TargetBed != nil {
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("prusa_bed_target_temperature_celsius", "The target bed temperature", nil, nil),
+			prometheus.NewDesc("prusa_target_temperature_celsius", "The target temperature", []string{"sensor"}, nil),
 			prometheus.GaugeValue,
 			*printerStatus.TargetBed,
+			"bed",
 		)
 	}
 
 	if printerStatus.AxisX != nil {
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("prusa_axis_x_position", "The current x position", nil, nil),
+			prometheus.NewDesc("prusa_axis_position", "The current axis position", []string{"axis"}, nil),
 			prometheus.GaugeValue,
 			*printerStatus.AxisX,
+			"x",
 		)
 	}
 
 	if printerStatus.AxisY != nil {
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("prusa_axis_y_position", "The current y position", nil, nil),
+			prometheus.NewDesc("prusa_axis_position", "The current axis position", []string{"axis"}, nil),
 			prometheus.GaugeValue,
 			*printerStatus.AxisY,
+			"y",
 		)
 	}
 
 	if printerStatus.AxisZ != nil {
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("prusa_axis_z_position", "The current z position", nil, nil),
+			prometheus.NewDesc("prusa_axis_position", "The current axis position", []string{"axis"}, nil),
 			prometheus.GaugeValue,
 			*printerStatus.AxisZ,
+			"z",
 		)
 	}
 
@@ -275,19 +279,23 @@ func (c *PrusaCollector) collectStatus(ch chan<- prometheus.Metric) {
 
 	if printerStatus.FanHotend != nil {
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("prusa_hotend_fan_speed_rpm", "The current hotend fan speed percentage", nil, nil),
+			prometheus.NewDesc("prusa_fan_speed_rpm", "The current fan RPM", []string{"fan"}, nil),
 			prometheus.GaugeValue,
 			float64(*printerStatus.FanHotend),
+			"hotend",
 		)
 	}
 
 	if printerStatus.FanPrint != nil {
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("prusa_print_fan_speed_rpm", "The current print fan speed percentage", nil, nil),
+			prometheus.NewDesc("prusa_fan_speed_rpm", "The current fan RPM", []string{"fan"}, nil),
 			prometheus.GaugeValue,
 			float64(*printerStatus.FanPrint),
+			"print",
 		)
 	}
+
+	return nil
 }
 
 type JobInfo struct {
@@ -297,33 +305,30 @@ type JobInfo struct {
 	TimePrinting  *int     `json:"time_printing"`
 }
 
-func (c *PrusaCollector) collectJobInfo(ch chan<- prometheus.Metric) {
+func (c *PrusaCollector) collectJobInfo(ch chan<- prometheus.Metric) error {
 	uri, err := url.JoinPath(c.address, "/api/v1/job")
 	if err != nil {
-		log.Println(err)
-		return
+		panic(err)
 	}
 
 	res, err := c.client.Get(uri)
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode == http.StatusNoContent {
-		return
+		// No job is running
+		return nil
 	}
 
 	if res.StatusCode != http.StatusOK {
-		log.Println("status code:", res.StatusCode)
-		return
+		return fmt.Errorf("status code: %d", res.StatusCode)
 	}
 
 	var jobInfo JobInfo
 	if err := json.NewDecoder(res.Body).Decode(&jobInfo); err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 
 	ch <- prometheus.MustNewConstMetric(
@@ -356,6 +361,8 @@ func (c *PrusaCollector) collectJobInfo(ch chan<- prometheus.Metric) {
 			float64(*jobInfo.TimePrinting),
 		)
 	}
+
+	return nil
 }
 
 func main() {
